@@ -1,3 +1,4 @@
+#scrapy runspider hhParser.py -o quotes.json ---
 
 import scrapy
 

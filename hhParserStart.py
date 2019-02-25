@@ -1,5 +1,3 @@
-#scrapy runspider hhParser.py -o quotes.json ---
-
 import urllib.request
 import json
 import mysql.connector
@@ -13,9 +11,10 @@ def GetStats():
     #print(responseIT_vacs.read())  
 
     data = json.load(responseIT_vacs)
+    
     print(data['found'])
 
-    mydb = mysql.connector.connect(host="192.168.0.20", user="root"
+    mydb = mysql.connector.connect(host="localhost", user="root"
                                    , passwd="19031994", database="hhVacs")
     mycursor = mydb.cursor()
     sql = "INSERT INTO vacsStats (DateTime, Url, Found) VALUES (%s, %s, %s)"
@@ -35,7 +34,7 @@ def GetVacancies():
 
     print(data['items']['id'])
 
-    mydb = mysql.connector.connect(host="192.168.0.20", user="root"
+    mydb = mysql.connector.connect(host="localhost", user="root"
                                    , passwd="19031994", database="hhVacs")
     mycursor = mydb.cursor()
     sql = "INSERT INTO hh_Vacancies (ID, Name, Area, Salary, Requirement, Responsibility) VALUES (%s, %s, %s, %s, %s, %s)"
@@ -48,7 +47,11 @@ def GetVacancies():
     mydb.commit()
     print(mycursor.rowcount, "record inserted at ", datetime.datetime.now())
 
+
+GetStats()
+
+""" 
 while(1):
     #GetStats()
     GetVacancies()
-    time.sleep(200)
+    time.sleep(200) """

@@ -6,11 +6,10 @@ import sched, time
 
 def GetStats():
     urlIT = r'https://api.hh.ru/vacancies?area=88&clusters=true&enable_snippets=true&specialization=1&from=cluster_professionalArea'
-    responseIT_vacs = urllib.request.urlopen(urlIT)
+    responseIT_stats = urllib.request.urlopen(urlIT)
 
-    #print(responseIT_vacs.read())  
-
-    data = json.load(responseIT_vacs)
+    responseBytes = responseIT_stats.read()
+    data = json.loads(responseBytes.decode("utf-8"))
     
     print(data['found'])
 
@@ -27,28 +26,34 @@ def GetStats():
 def GetVacancies():
     urlIT = r'https://api.hh.ru/vacancies?area=88&clusters=true&enable_snippets=true&specialization=1&from=cluster_professionalArea'
     responseIT_vacs = urllib.request.urlopen(urlIT)
+    responseBytes = responseIT_vacs.read()
+    data = json.loads(responseBytes.decode("utf-8"))
 
-    data = json.load(responseIT_vacs)
-    #print(data['found']) 
-    #print(data['items']) 
-
-    print(data['items']['id'])
+    #print(data['items']['id'])
 
     mydb = mysql.connector.connect(host="localhost", user="root"
                                    , passwd="19031994", database="hhVacs")
     mycursor = mydb.cursor()
-    sql = "INSERT INTO hh_Vacancies (ID, Name, Area, Salary, Requirement, Responsibility) VALUES (%s, %s, %s, %s, %s, %s)"
-
-    val = (data['items'][0]['id'],data['items'][0]['name'], int(data['items'][0]['area']['id']), int(data['items'][0]['salary']['to'])
-           , data['items'][0]['snippet']['requirement'] if data['items'][0]['snippet']['requirement'] else ''
-           , data['items'][0]['snippet']['responsibility'] if data['items'][0]['snippet']['responsibility'] else '')
+    sql = "INSERT INTO hh_Vacancies (ID, Name, Area, SalaryFrom, SalaryTo, Requirement, Responsibility) VALUES (%s, %s, %s, %s, %s, %s, %s)"
     
-    mycursor.execute(sql, val)
+    vacID = data['items'][0]['id']
+    name = data['items'][0]['name']
+    areaID = int(data['items'][0]['area']['id']) if int(data['items'][0]['area']['id']) else ''
+    salaryFrom = int(data['items'][0]['salary']['from']) if data['items'][0]['salary']['from'] != None else None
+    salaryTo = int(data['items'][0]['salary']['to']) if data['items'][0]['salary']['to'] != None else None
+    requirement = data['items'][0]['snippet']['requirement'] if data['items'][0]['snippet']['requirement'] else ''
+    responsibility = data['items'][0]['snippet']['responsibility'] if data['items'][0]['snippet']['responsibility'] else ''
+    
+    
+    values = (vacID, name, areaID, salaryFrom, salaryTo, requirement, responsibility)
+
+    mycursor.execute(sql, values)
     mydb.commit()
     print(mycursor.rowcount, "record inserted at ", datetime.datetime.now())
 
 
 GetStats()
+GetVacancies()
 
 """ 
 while(1):

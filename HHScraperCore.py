@@ -5,21 +5,20 @@ import datetime
 import sched, time
 import apscheduler
 
-def GetStats():
-    urlIT = r'https://api.hh.ru/vacancies?area=88&clusters=true&enable_snippets=true&specialization=1&from=cluster_professionalArea'
-    responseIT_stats = urllib.request.urlopen(urlIT)
 
-    responseBytes = responseIT_stats.read()
-    data = json.loads(responseBytes.decode("utf-8"))
-   
+def AddStatsToDB():
+    urlIT = r'https://api.hh.ru/vacancies?area=88&clusters=true&enable_snippets=true&specialization=1&from=cluster_professionalArea'
+    data = GetRequestedData()
+    
     mydb = mysql.connector.connect(host="localhost", user="root"
-                                   , passwd="19031994", database="hhVacs")
+                                   , passwd="19031994", database="HHScraperData")
+
     mycursor = mydb.cursor()
-    sql = "INSERT INTO vacsStats (DateTime, Url, Found) VALUES (%s, %s, %s)"
+    sql = "INSERT INTO Stats (DateTime, Url, Found) VALUES (%s, %s, %s)"
     val = (datetime.datetime.now(), urlIT, data['found'])
     mycursor.execute(sql, val)
     mydb.commit()
-
+    mydb.close()
     print("{0} record ({1}) inserted at {2}".format(mycursor.rowcount, data['found'], datetime.datetime.now()))
 
 def GetVacancie():
@@ -31,9 +30,9 @@ def GetVacancie():
     #print(data['items']['id'])
 
     mydb = mysql.connector.connect(host="localhost", user="root"
-                                   , passwd="19031994", database="hhVacs")
+                                   , passwd="19031994", database="HHScraperData")
     mycursor = mydb.cursor()
-    sql = "INSERT INTO hh_Vacancies (ID, Name, Area, SalaryFrom, SalaryTo, Requirement, Responsibility) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+    sql = "INSERT INTO Vacancies (ID, Name, Area, SalaryFrom, SalaryTo, Requirement, Responsibility) VALUES (%s, %s, %s, %s, %s, %s, %s)"
     
     vacID = data['items'][0]['id']
     name = data['items'][0]['name']
@@ -49,7 +48,7 @@ def GetVacancie():
     mydb.commit()
     print(mycursor.rowcount, "record inserted at ", datetime.datetime.now())
 
-def GetRequestedData(pageNum):
+def GetRequestedData(pageNum=0):
     #perPage = 50
     urlIT = r'https://api.hh.ru/vacancies?area=88&clusters=true&enable_snippets=true&specialization=1&from=cluster_professionalArea&page='+str(pageNum)
     responseIT_vacs = urllib.request.urlopen(urlIT)
@@ -58,17 +57,23 @@ def GetRequestedData(pageNum):
     return data
 
 def AddVacanciesToDB():
-    data = GetRequestedData(0)
+    mydb = mysql.connector.connect(host="localhost", user="root"
+                                   , passwd="19031994", database="HHScraperData")
+    mycursor = mydb.cursor()
+
+    data = GetRequestedData()
     values = []
     for page in range(int(data['pages'])):
         for i in range(int(data['per_page'])):
             vacID = data['items'][i]['id']
 
-            if (CheckVacancieInDB(vacID)): continue
+            if (CheckVacancieInDB(vacID, mycursor)): continue
             
-            dateTime = datetime.datetime.now()
-            name = data['items'][i]['name']
+            dateTime = datetime.datetime.now() 
+            name = data['items'][i]['name'] #заменить все на data.get (?), вернет none если не найдет ключ74
             areaID = int(data['items'][i]['area']['id']) if int(data['items'][i]['area']['id']) else ''
+            salaryFrom = None
+            salaryTo = None
             if data['items'][i]['salary'] !=  None:
                 salaryFrom = int(data['items'][i]['salary']['from']) if data['items'][i]['salary']['from'] != None else None
                 salaryTo = int(data['items'][i]['salary']['to']) if data['items'][i]['salary']['to'] != None else None
@@ -79,45 +84,26 @@ def AddVacanciesToDB():
             values.append(value)
         data = GetRequestedData(page)
 
-    mydb = mysql.connector.connect(host="localhost", user="root"
-                                   , passwd="19031994", database="hhVacs")
 
-    mycursor = mydb.cursor()
-    sql = '''INSERT INTO hh_Vacancies (DateTime, ID, Name, Area, 
+    sql = '''INSERT INTO Vacancies (DateTime, ID, Name, Area, 
     SalaryFrom, SalaryTo, Requirement, Responsibility) 
     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)'''
 
     mycursor.executemany(sql, values)
     mydb.commit()
-    print(mycursor.rowcount, "records inserted at ", datetime.datetime.now())
+    mydb.close()
+    print(mycursor.rowcount if mycursor.rowcount > 0 else 0, "new vacancies inserted at ", datetime.datetime.now())
+    print('ID: ' + str(values[1]) if len(values) > 0 else 'Null vacancies added')
 
-def CheckVacancieInDB(vacID):
-    mydb = mysql.connector.connect(host="localhost", user="root"
-                                   , passwd="19031994", database="hhVacs")
-    mycursor = mydb.cursor()
-    sql = "SELECT * FROM hh_Vacancies WHERE ID = (%s)"
-    mycursor.execute(sql, (vacID,))
-
-    if mycursor.fetchall():
+def CheckVacancieInDB(vacID, dbCursor):
+    #mydb = mysql.connector.connect(host="localhost", user="root"
+    #                               , passwd="19031994", database="HHScraperData")
+    #mycursor = mydb.cursor()
+    sql = "SELECT * FROM Vacancies WHERE ID = (%s)"
+    dbCursor.execute(sql, (vacID,))
+    if dbCursor.fetchall():
         return True
 
-#GetStats()
-#GetVacancie()
-#AddVacanciesToDB()
+AddStatsToDB()
+AddVacanciesToDB()
 
-""" 
-while(1):
-    #GetStats()
-    GetVacancie()
-    time.sleep(200) """
-
-
-""" todo:
-    +/- *добавление всех данных сразу (проход по всем страницам)
-        *настройка apscheduler или подобного для запланированного запуска
-        *добавить дату создания (парсить) и дату закрытия (когда скрипт увидел что она закрыта)
-            -дату закрытия проверять отдельным методом (!)
-        *отдельная таблица с полным описанием и требованиями
-            -там добавить требуемый опыт
-        *добавить работадателя
-"""

@@ -1,17 +1,11 @@
-#import apscheduler
-from apscheduler.schedulers.background import BackgroundScheduler
-import logging
+from HHScraperCore import AddStatsToDB
+from HHScraperCore import AddVacanciesToDB
+import schedule
+import time
 
-import HHScraperCore
+schedule.every(3).minutes.do(AddStatsToDB)
+schedule.every(3).minutes.do(AddVacanciesToDB)
 
-logging.basicConfig()
-logging.getLogger('apscheduler').setLevel(logging.DEBUG)
-
-scheduler = BackgroundScheduler()
-scheduler.add_job(HHScraperCore.GetStats, 'interval', seconds = 2)
-scheduler.start()
-
-scheduler.print_jobs()
-
-#HHScraperCore.GetStats()
-
+while True:
+    schedule.run_pending()
+    time.sleep(1)

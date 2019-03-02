@@ -70,7 +70,7 @@ def AddVacanciesToDB():
             if (CheckVacancieInDB(vacID, mycursor)): continue
             
             dateTime = datetime.datetime.now() 
-            name = data['items'][i]['name'] #заменить все на data.get (?), вернет none если не найдет ключ74
+            name = data['items'][i]['name'] #заменить все на data.get (?), вернет none если не найдет ключ
             areaID = int(data['items'][i]['area']['id']) if int(data['items'][i]['area']['id']) else ''
             salaryFrom = None
             salaryTo = None
@@ -95,6 +95,48 @@ def AddVacanciesToDB():
     print(mycursor.rowcount if mycursor.rowcount > 0 else 0, "new vacancies inserted at ", datetime.datetime.now())
     print('ID: ' + str(values[1]) if len(values) > 0 else 'Null vacancies added')
 
+def AddVacanciesDetailsToDB():
+    mydb = mysql.connector.connect(host="localhost", user="root"
+                                   , passwd="19031994", database="HHScraperData")
+    mycursor = mydb.cursor()
+    sql = "SELECT ID FROM Vacancies"
+    mycursor.execute(sql)       
+
+    vacs = mycursor.fetchall()
+    vacsDetails = []
+    for vac in vacs:
+        #добавить проверку есть ли в БД
+        url = r'https://api.hh.ru/vacancies/'+str(vac[0])
+        try:
+            responseIT_vacs = urllib.request.urlopen(url)
+            responseBytes = responseIT_vacs.read()
+        except:
+            continue
+        data = json.loads(responseBytes.decode("utf-8"))
+
+        ID = data['id']
+        dateTime = datetime.datetime.now() 
+        createdDateTime = str(data['created_at']).replace('T', ' ')
+        createdDateTime = createdDateTime[0:createdDateTime.find('+')]
+
+        description = data['description']
+        experience = data['experience']['name']
+        employerName = data['employer']['name']
+        employerID = data['employer']['id']
+
+        value = [ID, dateTime, createdDateTime, description, experience, employerName, employerID]
+        vacsDetails.append(value)
+
+    sql = '''INSERT INTO VacanciesDetails (ID, DateTime, CreatedDateTime, Description, 
+    Experience, EmployerName, EmployerID) 
+    VALUES (%s, %s, %s, %s, %s, %s, %s)'''
+
+    mycursor.executemany(sql, vacsDetails)
+    mydb.commit()
+    mydb.close()
+    print(mycursor.rowcount if mycursor.rowcount > 0 else 0, " detailed vacancies inserted at ", datetime.datetime.now())
+    print('ID: ' + str(vacsDetails[:0]) if len(vacsDetails) > 0 else 'Null detailed vacancies added')
+
 def CheckVacancieInDB(vacID, dbCursor):
     #mydb = mysql.connector.connect(host="localhost", user="root"
     #                               , passwd="19031994", database="HHScraperData")
@@ -104,6 +146,7 @@ def CheckVacancieInDB(vacID, dbCursor):
     if dbCursor.fetchall():
         return True
 
-AddStatsToDB()
-AddVacanciesToDB()
 
+#AddStatsToDB()
+#AddVacanciesToDB()
+AddVacanciesDetailsToDB()

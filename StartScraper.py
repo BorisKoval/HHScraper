@@ -1,10 +1,8 @@
-from HHScraperCore import AddStatsToDB
-from HHScraperCore import AddVacanciesToDB
+from HHScraperCore import ParseAllData
 import schedule
 import time
 
-schedule.every(3).minutes.do(AddStatsToDB)
-schedule.every(3).minutes.do(AddVacanciesToDB)
+schedule.every(1).minutes.do(ParseAllData)
 
 while True:
     schedule.run_pending()

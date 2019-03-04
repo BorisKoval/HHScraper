@@ -4,7 +4,7 @@ import mysql.connector
 import datetime
 import logging
 
-logging.basicConfig(filename = 'log_'+str(datetime.date.today())+'.log', filemode='a', level = logging.INFO)
+logging.basicConfig(filename = 'logs/log_'+str(datetime.date.today())+'.log', filemode='a', level = logging.INFO)
 
 #добавление кол-ва открытых вакансий
 def AddStatsToDB():
@@ -31,12 +31,15 @@ def AddVacanciesToDB():
 
     data = GetRequestedData()
     values = []
+    tempVacIDs =[]
     for page in range(int(data['pages'])):
         for i in range(int(data['per_page'])):
             vacID = data['items'][i]['id']
 
-            if (CheckVacancieInDB(vacID, mycursor, 'Vacancies')): continue
+            if CheckVacancieInDB(vacID, mycursor, 'Vacancies') or (vacID in tempVacIDs): continue
             
+            tempVacIDs.append(vacID)
+
             dateTime = datetime.datetime.now() 
             name = data['items'][i]['name'] #заменить все на data.get (?), вернет none если не найдет ключ
             areaID = int(data['items'][i]['area']['id']) if int(data['items'][i]['area']['id']) else ''
@@ -72,11 +75,14 @@ def AddVacanciesDetailsToDB():
 
     vacs = mycursor.fetchall()
     vacsDetails = []
+    tempVacIDs = [] #для проверки добавления задвоенных записей (непонятно откуда они...)
     for vacId in vacs:
 
-        if CheckVacancieInDB(vacId[0], mycursor, 'VacanciesDetails'): #проверка существует ли уже запись в БД
+        #проверка существует ли уже запись в БД
+        if CheckVacancieInDB(vacId[0], mycursor, 'VacanciesDetails') or (vacId[0] in tempVacIDs):
             continue
 
+        tempVacIDs.append(vacId[0])
         url = r'https://api.hh.ru/vacancies/'+str(vacId[0])
         try: #проверка, т.к. вакансия уже быть закрыта и URL открыть не получится
             responseIT_vacs = urllib.request.urlopen(url)
@@ -125,7 +131,7 @@ def CheckVacancieInDB(vacID, dbCursor, tableName):
     if dbCursor.fetchall():
         return True
 
-#выполнение всех методовdatetime.datetime.now()
+#выполнение всех методов
 def ParseAllData():
     print("\nStart scan:", datetime.datetime.now())
     logging.info("\nStart scan:" + str(datetime.datetime.now()))
@@ -140,32 +146,3 @@ def ParseAllData():
 ParseAllData()
 
 
-
-#----------------------------------
-#Temporary Method
-def GetVacancie():
-    urlIT = r'https://api.hh.ru/vacancies?area=88&clusters=true&enable_snippets=true&specialization=1&from=cluster_professionalArea'
-    responseIT_vacs = urllib.request.urlopen(urlIT)
-    responseBytes = responseIT_vacs.read()
-    data = json.loads(responseBytes.decode("utf-8"))
-
-    #print(data['items']['id'])
-
-    mydb = mysql.connector.connect(host="localhost", user="root"
-                                   , passwd="19031994", database="HHScraperData")
-    mycursor = mydb.cursor()
-    sql = "INSERT INTO Vacancies (ID, Name, Area, SalaryFrom, SalaryTo, Requirement, Responsibility) VALUES (%s, %s, %s, %s, %s, %s, %s)"
-    
-    vacID = data['items'][0]['id']
-    name = data['items'][0]['name']
-    areaID = int(data['items'][0]['area']['id']) if int(data['items'][0]['area']['id']) else ''
-    salaryFrom = int(data['items'][0]['salary']['from']) if data['items'][0]['salary']['from'] != None else None
-    salaryTo = int(data['items'][0]['salary']['to']) if data['items'][0]['salary']['to'] != None else None
-    requirement = data['items'][0]['snippet']['requirement'] if data['items'][0]['snippet']['requirement'] else ''
-    responsibility = data['items'][0]['snippet']['responsibility'] if data['items'][0]['snippet']['responsibility'] else ''
-    
-    values = (vacID, name, areaID, salaryFrom, salaryTo, requirement, responsibility)
-
-    mycursor.execute(sql, values)
-    mydb.commit()
-    print(mycursor.rowcount, "record inserted at ", datetime.datetime.now())

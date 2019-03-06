@@ -4,6 +4,9 @@ import mysql.connector
 import datetime
 import logging
 
+#параметры подключения к БД
+dbConnectionParams = {'host':'localhost', 'user':'root', 'passwd':'19031994', 'database':'HHScraperData'}
+#конфиг логов
 logging.basicConfig(filename = 'logs/log_'+str(datetime.date.today())+'.log', filemode='a', level = logging.INFO)
 
 #добавление кол-ва открытых вакансий
@@ -11,8 +14,7 @@ def AddStatsToDB():
     urlIT = r'https://api.hh.ru/vacancies?area=88&clusters=true&enable_snippets=true&specialization=1&from=cluster_professionalArea'
     data = GetRequestedData()
     
-    mydb = mysql.connector.connect(host="localhost", user="root"
-                                   , passwd="19031994", database="HHScraperData")
+    mydb = mysql.connector.connect(**dbConnectionParams)
 
     mycursor = mydb.cursor()
     sql = "INSERT INTO Stats (DateTime, Url, Found) VALUES (%s, %s, %s)"
@@ -25,8 +27,7 @@ def AddStatsToDB():
 
 #добавления краткого описания вакансии в БД
 def AddVacanciesToDB():
-    mydb = mysql.connector.connect(host="localhost", user="root"
-                                   , passwd="19031994", database="HHScraperData")
+    mydb = mysql.connector.connect(**dbConnectionParams)
     mycursor = mydb.cursor()
 
     data = GetRequestedData()
@@ -67,28 +68,32 @@ def AddVacanciesToDB():
 
 #добавление детального описания вакансии в БД
 def AddVacanciesDetailsToDB():
-    mydb = mysql.connector.connect(host="localhost", user="root"
-                                   , passwd="19031994", database="HHScraperData")
+    mydb = mysql.connector.connect(**dbConnectionParams)
     mycursor = mydb.cursor()
     sql = "SELECT ID FROM Vacancies"
     mycursor.execute(sql)       
-
     vacs = mycursor.fetchall()
+
     vacsDetails = []
     tempVacIDs = [] #для проверки добавления задвоенных записей (непонятно откуда они...)
     for vacId in vacs:
-
-        #проверка существует ли уже запись в БД
+        #проверка существует ли уже запись в БД, либо мы уже собираемся добавить ее
         if CheckVacancieInDB(vacId[0], mycursor, 'VacanciesDetails') or (vacId[0] in tempVacIDs):
             continue
-
         tempVacIDs.append(vacId[0])
+
         url = r'https://api.hh.ru/vacancies/'+str(vacId[0])
-        try: #проверка, т.к. вакансия уже быть закрыта и URL открыть не получится
+        try: #проверка, т.к. вакансия уже может быть закрыта и URL открыть не получится
             responseIT_vacs = urllib.request.urlopen(url)
             responseBytes = responseIT_vacs.read()
-        except:
+        except urllib.error.HTTPError as er: #логируем и ставим дату закрытия в БД
+            if (er.code == 404):
+                logging.info('Daleted vacancie ID is : '+str(vacId[0]))
+                CloseVacancieInDB(str(vacId[0]), mycursor)
             continue
+        except: #для всех других ошибок - идем дальше
+            continue
+
         data = json.loads(responseBytes.decode("utf-8"))
 
         ID = data['id']
@@ -118,7 +123,7 @@ def AddVacanciesDetailsToDB():
 #получение данных по URLу
 def GetRequestedData(pageNum=0):
     #perPage = 50
-    urlIT = r'https://api.hh.ru/vacancies?area=88&clusters=true&enable_snippets=true&specialization=1&from=cluster_professionalArea&page='+str(pageNum)
+    urlIT = r'https://api.hh.ru/vacancies?area=88&clusters=true&enable_snippets=true&specialization=1&from=cluster_professionalArea&per_page=50&page='+str(pageNum)
     responseIT_vacs = urllib.request.urlopen(urlIT)
     responseBytes = responseIT_vacs.read()
     data = json.loads(responseBytes.decode("utf-8"))
@@ -130,6 +135,11 @@ def CheckVacancieInDB(vacID, dbCursor, tableName):
     dbCursor.execute(sql, (vacID,))
     if dbCursor.fetchall():
         return True
+
+#отправка даты закрытия вакансии (если запрос URL вернул по ней 404)
+def CloseVacancieInDB(vacID, dbCursor):
+    sql = "UPDATE VacanciesDetails SET CloseDateTime = '{0}' WHERE ID = (%s)".format(datetime.datetime.now())
+    dbCursor.execute(sql, (vacID,))
 
 #выполнение всех методов
 def ParseAllData():

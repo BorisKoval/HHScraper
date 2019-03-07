@@ -1,11 +1,11 @@
 import urllib.request
 import json
-import mysql.connector
 import datetime
 import logging
+import mysql.connector
 
 #параметры подключения к БД
-dbConnectionParams = {'host':'localhost', 'user':'root', 'passwd':'19031994', 'database':'HHScraperData'}
+DB_CONNECTION_PARAMS = {'host':'localhost', 'user':'root', 'passwd':'19031994', 'database':'HHScraperData'}
 #конфиг логов
 logging.basicConfig(filename = 'logs/log_'+str(datetime.date.today())+'.log', filemode='a', level = logging.INFO)
 
@@ -14,7 +14,7 @@ def AddStatsToDB():
     urlIT = r'https://api.hh.ru/vacancies?area=88&clusters=true&enable_snippets=true&specialization=1&from=cluster_professionalArea'
     data = GetRequestedData()
     
-    mydb = mysql.connector.connect(**dbConnectionParams)
+    mydb = mysql.connector.connect(**DB_CONNECTION_PARAMS)
 
     mycursor = mydb.cursor()
     sql = "INSERT INTO Stats (DateTime, Url, Found) VALUES (%s, %s, %s)"
@@ -27,28 +27,28 @@ def AddStatsToDB():
 
 #добавления краткого описания вакансии в БД
 def AddVacanciesToDB():
-    mydb = mysql.connector.connect(**dbConnectionParams)
+    mydb = mysql.connector.connect(**DB_CONNECTION_PARAMS)
     mycursor = mydb.cursor()
 
     data = GetRequestedData()
     values = []
-    tempVacIDs =[]
+    tempVacIDs = []
     for page in range(int(data['pages'])):
         for i in range(int(data['per_page'])):
             vacID = data['items'][i]['id']
 
             if CheckVacancieInDB(vacID, mycursor, 'Vacancies') or (vacID in tempVacIDs): continue
-            
+
             tempVacIDs.append(vacID)
 
-            dateTime = datetime.datetime.now() 
+            dateTime = datetime.datetime.now()
             name = data['items'][i]['name'] #заменить все на data.get (?), вернет none если не найдет ключ
             areaID = int(data['items'][i]['area']['id']) if int(data['items'][i]['area']['id']) else ''
             salaryFrom = None
             salaryTo = None
-            if data['items'][i]['salary'] !=  None:
-                salaryFrom = int(data['items'][i]['salary']['from']) if data['items'][i]['salary']['from'] != None else None
-                salaryTo = int(data['items'][i]['salary']['to']) if data['items'][i]['salary']['to'] != None else None
+            if data['items'][i]['salary'] is not None:
+                salaryFrom = int(data['items'][i]['salary']['from']) if data['items'][i]['salary']['from'] is not None else None
+                salaryTo = int(data['items'][i]['salary']['to']) if data['items'][i]['salary']['to'] is not None else None
             requirement = data['items'][i]['snippet']['requirement'] if data['items'][i]['snippet']['requirement'] else ''
             responsibility = data['items'][i]['snippet']['responsibility'] if data['items'][i]['snippet']['responsibility'] else ''
             
@@ -68,7 +68,7 @@ def AddVacanciesToDB():
 
 #добавление детального описания вакансии в БД
 def AddVacanciesDetailsToDB():
-    mydb = mysql.connector.connect(**dbConnectionParams)
+    mydb = mysql.connector.connect(**DB_CONNECTION_PARAMS)
     mycursor = mydb.cursor()
     sql = "SELECT ID FROM Vacancies"
     mycursor.execute(sql)       
@@ -86,9 +86,8 @@ def AddVacanciesDetailsToDB():
         try: #проверка, т.к. вакансия уже может быть закрыта и URL открыть не получится
             responseIT_vacs = urllib.request.urlopen(url)
             responseBytes = responseIT_vacs.read()
-        except urllib.error.HTTPError as er: #логируем и ставим дату закрытия в БД
-            if (er.code == 404):
-                logging.info('Daleted vacancie ID is : '+str(vacId[0]))
+        except urllib.error.HTTPError as er: 
+            if er.code == 404: #переходим в метод установки даты закрытия вакансии
                 CloseVacancieInDB(str(vacId[0]), mycursor)
             continue
         except: #для всех других ошибок - идем дальше
@@ -138,8 +137,13 @@ def CheckVacancieInDB(vacID, dbCursor, tableName):
 
 #отправка даты закрытия вакансии (если запрос URL вернул по ней 404)
 def CloseVacancieInDB(vacID, dbCursor):
+    sql = "SELECT * FROM VacanciesDetails WHERE ID = (%s) AND CloseDateTime IS NULL"
+    dbCursor.execute(sql, (vacID,))
+    if not dbCursor.fetchall(): #Если нужной записи нет - выходим
+        return
     sql = "UPDATE VacanciesDetails SET CloseDateTime = '{0}' WHERE ID = (%s)".format(datetime.datetime.now())
     dbCursor.execute(sql, (vacID,))
+    logging.info('Deleted vacancie ID is: ' + vacID)
 
 #выполнение всех методов
 def ParseAllData():

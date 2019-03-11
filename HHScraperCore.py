@@ -77,23 +77,29 @@ def AddVacanciesDetailsToDB():
     vacsDetails = []
     tempVacIDs = [] #для проверки добавления задвоенных записей (непонятно откуда они...)
     for vacId in vacs:
-        #проверка существует ли уже запись в БД, либо мы уже собираемся добавить ее
-        if CheckVacancieInDB(vacId[0], mycursor, 'VacanciesDetails') or (vacId[0] in tempVacIDs):
-            continue
-        tempVacIDs.append(vacId[0])
 
         url = r'https://api.hh.ru/vacancies/'+str(vacId[0])
         try: #проверка, т.к. вакансия уже может быть закрыта и URL открыть не получится
             responseIT_vacs = urllib.request.urlopen(url)
-            responseBytes = responseIT_vacs.read()
+            
         except urllib.error.HTTPError as er: 
-            if er.code == 404: #переходим в метод установки даты закрытия вакансии
-                CloseVacancieInDB(str(vacId[0]), mycursor)
+            if er.code == 404 and CheckVacancieInDB(vacId[0], mycursor, 'VacanciesDetails'): #переходим в метод установки даты закрытия вакансии
+                CloseVacancieInDB(mydb, str(vacId[0]), 'CloseDateTime')
             continue
         except: #для всех других ошибок - идем дальше
             continue
 
+        responseBytes = responseIT_vacs.read()
         data = json.loads(responseBytes.decode("utf-8"))
+
+        if data['archived']:
+            CloseVacancieInDB(mydb, str(vacId[0]), 'ArchiveDateTime')
+            continue
+
+        #проверка существует ли уже запись в БД, либо мы уже ее добавили
+        if CheckVacancieInDB(vacId[0], mycursor, 'VacanciesDetails') or (vacId[0] in tempVacIDs):
+            continue
+        tempVacIDs.append(vacId[0])
 
         ID = data['id']
         dateTime = datetime.datetime.now() 
@@ -116,7 +122,6 @@ def AddVacanciesDetailsToDB():
     mydb.commit()
     mydb.close()
     
-    #print(str(len(vacsDetails) + ' detailed vacancies added | ') if len(vacsDetails) > 0 else 'Null detailed vacancies added | ', datetime.datetime.now())
     logging.info('{0} detailed vacancies added ({1})'.format(str(len(vacsDetails)) if len(vacsDetails) > 0 else 'Null', str(datetime.datetime.now())))
 
 #получение данных по URLу
@@ -136,13 +141,15 @@ def CheckVacancieInDB(vacID, dbCursor, tableName):
         return True
 
 #отправка даты закрытия вакансии (если запрос URL вернул по ней 404)
-def CloseVacancieInDB(vacID, dbCursor):
-    sql = "SELECT * FROM VacanciesDetails WHERE ID = (%s) AND CloseDateTime IS NULL"
-    dbCursor.execute(sql, (vacID,))
+def CloseVacancieInDB(db, vacID, closeType):
+    dbCursor = db.cursor()
+    sql = "SELECT * FROM VacanciesDetails WHERE ID = %s AND {0} IS NULL".format(closeType)
+    dbCursor.execute(sql, (vacID, ))
     if not dbCursor.fetchall(): #Если нужной записи нет - выходим
         return
-    sql = "UPDATE VacanciesDetails SET CloseDateTime = '{0}' WHERE ID = (%s)".format(datetime.datetime.now())
+    sql = "UPDATE VacanciesDetails SET {0} = '{1}' WHERE ID = %s".format(closeType, datetime.datetime.now())
     dbCursor.execute(sql, (vacID,))
+    db.commit()
     logging.info('Deleted vacancie ID is: ' + vacID)
 
 #выполнение всех методов
@@ -158,5 +165,4 @@ def ParseAllData():
     logging.info("End scan:" + str(datetime.datetime.now())+'\n')
 
 ParseAllData()
-
 

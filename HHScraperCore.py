@@ -5,7 +5,7 @@ import logging
 import mysql.connector
 
 #параметры подключения к БД
-DB_CONNECTION_PARAMS = {'host':'localhost', 'user':'root', 'passwd':'19031994', 'database':'HHScraperData'}
+DB_CONNECTION_PARAMS = {'host':'localhost', 'user':'root', 'passwd':'19031994', 'database':'HHWorkStats'}
 #конфиг логов
 logging.basicConfig(filename = 'logs/log_'+str(datetime.date.today())+'.log', filemode='a', level = logging.INFO)
 
@@ -17,12 +17,11 @@ def AddStatsToDB():
     mydb = mysql.connector.connect(**DB_CONNECTION_PARAMS)
 
     mycursor = mydb.cursor()
-    sql = "INSERT INTO Stats (DateTime, Url, Found) VALUES (%s, %s, %s)"
+    sql = "INSERT INTO workstats_stats (date_time, url, found) VALUES (%s, %s, %s)"
     val = (datetime.datetime.now(), urlIT, data['found'])
     mycursor.execute(sql, val)
     mydb.commit()
     mydb.close()
-    #print("Found ({0}) open vacancies ({1})".format(data['found'], datetime.datetime.now()))
     logging.info("Found ({0}) open vacancies ({1})".format(data['found'], datetime.datetime.now()))
 
 #добавления краткого описания вакансии в БД
@@ -37,7 +36,7 @@ def AddVacanciesToDB():
         for i in range(int(data['per_page'])):
             vacID = data['items'][i]['id']
 
-            if CheckVacancieInDB(vacID, mycursor, 'Vacancies') or (vacID in tempVacIDs): continue
+            if CheckVacancieInDB(vacID, mycursor, 'workstats_vacancies') or (vacID in tempVacIDs): continue
 
             tempVacIDs.append(vacID)
 
@@ -56,21 +55,20 @@ def AddVacanciesToDB():
             values.append(value)
         data = GetRequestedData(page)
 
-    sql = '''INSERT INTO Vacancies (DateTime, ID, Name, Area, 
-    SalaryFrom, SalaryTo, Requirement, Responsibility) 
+    sql = '''INSERT INTO workstats_vacancies (date_time, id, name, area, 
+    salary_from, ralary_to, requirement, responsibility) 
     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)'''
 
     mycursor.executemany(sql, values)
     mydb.commit()
     mydb.close()
-    #print(str(len(values)) + ' vacancies added | ' if len(values) > 0 else 'Null vacancies added | ', datetime.datetime.now())
     logging.info('{0} vacancies added ({1})'.format(str(len(values)) if len(values) > 0 else 'Null', str(datetime.datetime.now())))
 
 #добавление детального описания вакансии в БД
 def AddVacanciesDetailsToDB():
     mydb = mysql.connector.connect(**DB_CONNECTION_PARAMS)
     mycursor = mydb.cursor()
-    sql = "SELECT ID FROM Vacancies"
+    sql = "SELECT id FROM workstats_vacancies"
     mycursor.execute(sql)       
     vacs = mycursor.fetchall()
 
@@ -83,8 +81,8 @@ def AddVacanciesDetailsToDB():
             responseIT_vacs = urllib.request.urlopen(url)
             
         except urllib.error.HTTPError as er: 
-            if er.code == 404 and CheckVacancieInDB(vacId[0], mycursor, 'VacanciesDetails'): #переходим в метод установки даты закрытия вакансии
-                CloseVacancieInDB(mydb, str(vacId[0]), 'CloseDateTime')
+            if er.code == 404 and CheckVacancieInDB(vacId[0], mycursor, 'workstats_vacanciesdetails'): #переходим в метод установки даты закрытия вакансии
+                CloseVacancieInDB(mydb, str(vacId[0]), 'close_date_time')
             continue
         except: #для всех других ошибок - идем дальше
             continue
@@ -93,11 +91,11 @@ def AddVacanciesDetailsToDB():
         data = json.loads(responseBytes.decode("utf-8"))
 
         if data['archived']:
-            CloseVacancieInDB(mydb, str(vacId[0]), 'ArchiveDateTime')
+            CloseVacancieInDB(mydb, str(vacId[0]), 'archive_date_time')
             continue
 
         #проверка существует ли уже запись в БД, либо мы уже ее добавили
-        if CheckVacancieInDB(vacId[0], mycursor, 'VacanciesDetails') or (vacId[0] in tempVacIDs):
+        if CheckVacancieInDB(vacId[0], mycursor, 'workstats_vacanciesdetails') or (vacId[0] in tempVacIDs):
             continue
         tempVacIDs.append(vacId[0])
 
@@ -114,8 +112,8 @@ def AddVacanciesDetailsToDB():
         value = [ID, dateTime, createdDateTime, description, experience, employerName, employerID]
         vacsDetails.append(value)
 
-    sql = '''INSERT INTO VacanciesDetails (ID, DateTime, CreatedDateTime, Description, 
-    Experience, EmployerName, EmployerID) 
+    sql = '''INSERT INTO workstats_vacanciesdetails (vacancie_id, date_time, created_date_time, description, 
+    experience, employer_name, employer_id) 
     VALUES (%s, %s, %s, %s, %s, %s, %s)'''
 
     mycursor.executemany(sql, vacsDetails)
@@ -135,7 +133,7 @@ def GetRequestedData(pageNum=0):
 
 #проверка, есть ли вакансия (id) в нужной таблице
 def CheckVacancieInDB(vacID, dbCursor, tableName):
-    sql = "SELECT * FROM {0} WHERE ID = (%s)".format(tableName)
+    sql = "SELECT * FROM {0} WHERE {1} = (%s)".format(tableName, 'id' if tableName == 'workstats_vacancies' else 'vacancie_id')
     dbCursor.execute(sql, (vacID,))
     if dbCursor.fetchall():
         return True
@@ -143,14 +141,14 @@ def CheckVacancieInDB(vacID, dbCursor, tableName):
 #отправка даты закрытия вакансии (если запрос URL вернул по ней 404)
 def CloseVacancieInDB(db, vacID, closeType):
     dbCursor = db.cursor()
-    sql = "SELECT * FROM VacanciesDetails WHERE ID = %s AND {0} IS NULL".format(closeType)
+    sql = "SELECT * FROM workstats_vacanciesdetails WHERE vacancie_id = %s AND {0} IS NULL".format(closeType)
     dbCursor.execute(sql, (vacID, ))
     if not dbCursor.fetchall(): #Если нужной записи нет - выходим
         return
-    sql = "UPDATE VacanciesDetails SET {0} = '{1}' WHERE ID = %s".format(closeType, datetime.datetime.now())
+    sql = "UPDATE workstats_vacanciesdetails SET {0} = '{1}' WHERE vacancie_id = %s".format(closeType, datetime.datetime.now())
     dbCursor.execute(sql, (vacID,))
     db.commit()
-    logging.info('Deleted vacancie ID is: ' + vacID)
+    logging.info('{0} vacancie ID is: {1}'.format(closeType, vacID))
 
 #выполнение всех методов
 def ParseAllData():

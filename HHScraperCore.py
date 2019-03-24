@@ -56,7 +56,7 @@ def AddVacanciesToDB():
         data = GetRequestedData(page)
 
     sql = '''INSERT INTO workstats_vacancies (date_time, id, name, area, 
-    salary_from, ralary_to, requirement, responsibility) 
+    salary_from, salary_to, requirement, responsibility) 
     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)'''
 
     mycursor.executemany(sql, values)

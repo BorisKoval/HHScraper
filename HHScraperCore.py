@@ -99,15 +99,19 @@ def AddVacanciesDetailsToDB():
             continue
         tempVacIDs.append(vacId[0])
 
-        ID = data['id']
-        dateTime = datetime.datetime.now() 
-        createdDateTime = str(data['created_at']).replace('T', ' ')
-        createdDateTime = createdDateTime[0:createdDateTime.find('+')]
+        try:
+            ID = data['id']
+            dateTime = datetime.datetime.now() 
+            createdDateTime = str(data['created_at']).replace('T', ' ')
+            createdDateTime = createdDateTime[0:createdDateTime.find('+')]
 
-        description = data['description']
-        experience = data['experience']['name']
-        employerName = data['employer']['name']
-        employerID = data['employer']['id']
+            description = data.get('description')
+            experience = data.get('experience').get('name')
+            employerName = data.get('employer').get('name')
+            employerID = data.get('employer').get('id')
+        except Exception as er:
+            logging.error(er + 'at vac #' + ID)
+            continue
 
         value = [ID, dateTime, createdDateTime, description, experience, employerName, employerID]
         vacsDetails.append(value)
